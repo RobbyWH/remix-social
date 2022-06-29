@@ -2,13 +2,13 @@ import type {ActionFunction, LoaderFunction} from '@remix-run/node'
 import {redirect, json} from '@remix-run/node'
 import {useActionData, useLoaderData} from '@remix-run/react'
 import {createPost, getPosts} from '~/services/posts.server'
-import type {Post} from '~/services/posts.server'
 import {Post as PostComponent} from '~/components/Post'
 import {PostForm} from '~/components/PostForm'
 import {CreatePost} from '~/services/validations'
+import { authenticator } from '~/services/auth.server'
 
 type LoaderData = {
-  posts: Post[]
+  posts: Awaited<ReturnType<typeof getPosts>>
 }
 
 type ActionData = {
@@ -26,6 +26,7 @@ type ActionData = {
 }
 
 export const action: ActionFunction = async ({request}) => {
+  const user = await authenticator.isAuthenticated(request, {failureRedirect: '/login'})
   const form = await request.formData()
   const rawTitle = form.get('title')
   const rawBody = form.get('body')
@@ -44,18 +45,20 @@ export const action: ActionFunction = async ({request}) => {
     )
   }
 
-  await createPost({title: result.data.title ?? null, body: result.data.body})
+  await createPost({title: result.data.title ?? null, body: result.data.body, authorId: user.id})
 
   return redirect('/')
 }
 
-export const loader: LoaderFunction = async () => {
+export const loader: LoaderFunction = async ({request}) => {
+  await authenticator.isAuthenticated(request, {failureRedirect: '/login'})
   const data: LoaderData = {posts: await getPosts()}
   return json(data)
 }
 
 export default function Index() {
   const {posts} = useLoaderData<LoaderData>()
+  console.log(posts)
   const formData = useActionData<ActionData>()
   return (
     <div className="p-8 flex flex-col items-center gap-8">
@@ -68,7 +71,7 @@ export default function Index() {
       <ul className="flex flex-col gap-4">
         {posts.map((post) => (
           <li key={post.body}>
-            <PostComponent header={post?.title}>{post.body}</PostComponent>
+            <PostComponent authorName={post?.author?.email} header={post?.title}>{post.body}</PostComponent>
           </li>
         ))}
       </ul>
